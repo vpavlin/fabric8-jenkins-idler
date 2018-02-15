@@ -22,10 +22,10 @@ printHelp() {
 Usage: ${0##*/} [start|stop]
 
 This script is used to run the Jenkins Idler on localhost.
-As a prerequisite DSAAS_PREVIEW_TOKEN, OPENSHIFT_API_TOKEN and  JC_AUTH_TOKEN need to be exported
+As a prerequisite DSAAS_PREVIEW_TOKEN, JC_OPENSHIFT_API_TOKEN and  JC_AUTH_TOKEN need to be exported
 in the shell you run this script.
 
-DSAAS_PREVIEW_TOKEN is the OpenShift token for console.rh-idev.openshift.com, OPENSHIFT_API_TOKEN is
+DSAAS_PREVIEW_TOKEN is the OpenShift token for console.rh-idev.openshift.com, JC_OPENSHIFT_API_TOKEN is
 the service account token used by the Idler and  JC_AUTH_TOKEN is the authentication token for the auth service
 used by the Idler.
 
@@ -45,6 +45,19 @@ EOF
 }
 
 ###############################################################################
+# Wraps oc command with namespace and token parameters
+# Globals:
+#   DSAAS_PREVIEW_TOKEN - token to run commands against staging cluster
+# Arguments:
+#   Passes all arguments to oc command
+# Returns:
+#   None
+###############################################################################
+loc() {
+    oc -n dsaas-preview --token ${DSAAS_PREVIEW_TOKEN} $@
+}
+
+###############################################################################
 # Forwards the jenkins-proxy service to localhost.
 # Globals:
 #   LOCAL_PROXY_PORT - local Idler port
@@ -54,12 +67,12 @@ EOF
 #   None
 ###############################################################################
 forwardProxyService() {
-    pod=$(oc get pods -l deploymentconfig=jenkins-proxy -o json | jq -r '.items[0].metadata.name')
+    pod=$(loc get pods -l deploymentconfig=jenkins-proxy -o json | jq -r '.items[0].metadata.name')
     if [ "${pod}" == "null" ] ; then
         echo "WARN: Unable to determine Proxy pod name"
         return
     fi
-    port=$(oc get pods -l deploymentconfig=jenkins-proxy -o json | jq -r '.items[0].spec.containers[0].ports[0].containerPort')
+    port=$(loc get pods -l deploymentconfig=jenkins-proxy -o json | jq -r '.items[0].spec.containers[0].ports[0].containerPort')
 
     if lsof -Pi :${LOCAL_PROXY_PORT} -sTCP:LISTEN -t >/dev/null ; then
         echo "INFO: Local Proxy port ${LOCAL_PROXY_PORT} already listening. Skipping oc port-forward" >&2
@@ -68,7 +81,7 @@ forwardProxyService() {
 
     while :
     do
-	    oc port-forward ${pod} ${LOCAL_PROXY_PORT}:${port} >&2
+	    loc port-forward ${pod} ${LOCAL_PROXY_PORT}:${port} >&2
 	    echo "Proxy port forward stopped with exit code $?.  Respawning.." >&2
 	    sleep 1
     done
@@ -85,12 +98,12 @@ forwardProxyService() {
 #   None
 ###############################################################################
 forwardTenantService() {
-    pod=$(oc get pods -l deploymentconfig=f8tenant -o json | jq -r '.items[0].metadata.name')
+    pod=$(loc get pods -l deploymentconfig=f8tenant -o json | jq -r '.items[0].metadata.name')
     if [ "${pod}" == "null" ] ; then
         echo "WARN: Unable to determine Tenant pod name"
         return
     fi
-    port=$(oc get pods -l deploymentconfig=f8tenant -o json | jq -r '.items[0].spec.containers[0].ports[0].containerPort')
+    port=$(loc get pods -l deploymentconfig=f8tenant -o json | jq -r '.items[0].spec.containers[0].ports[0].containerPort')
 
     if lsof -Pi :${LOCAL_TENANT_PORT} -sTCP:LISTEN -t >/dev/null ; then
         echo "INFO: Local Tenant port ${LOCAL_TENANT_PORT} already listening. Skipping oc port-forward" >&2
@@ -99,7 +112,7 @@ forwardTenantService() {
 
     while :
     do
-	    oc port-forward ${pod} ${LOCAL_TENANT_PORT}:${port} >&2
+	    loc port-forward ${pod} ${LOCAL_TENANT_PORT}:${port} >&2
 	    echo "Tenant port forward stopped with exit code $?.  Respawning.." >&2
 	    sleep 1
     done
@@ -116,12 +129,12 @@ forwardTenantService() {
 #   None
 ###############################################################################
 forwardToggleService() {
-    pod=$(oc get pods -l deploymentconfig=f8toggles -o json | jq -r '.items[0].metadata.name')
+    pod=$(loc get pods -l deploymentconfig=f8toggles -o json | jq -r '.items[0].metadata.name')
     if [ "${pod}" == "null" ] ; then
         echo "WARN: Unable to determine toggle service pod name"
         return
     fi
-    port=$(oc get pods -l deploymentconfig=f8toggles -o json | jq -r '.items[0].spec.containers[0].ports[0].containerPort')
+    port=$(loc get pods -l deploymentconfig=f8toggles -o json | jq -r '.items[0].spec.containers[0].ports[0].containerPort')
 
     if lsof -Pi :${LOCAL_TOGGLE_PORT} -sTCP:LISTEN -t >/dev/null ; then
         echo "INFO: Local Toggle port ${LOCAL_TOGGLE_PORT} already listening. Skipping oc port-forward" >&2
@@ -130,7 +143,7 @@ forwardToggleService() {
 
     while :
     do
-	    oc port-forward ${pod} ${LOCAL_TOGGLE_PORT}:${port} >&2
+	    loc port-forward ${pod} ${LOCAL_TOGGLE_PORT}:${port} >&2
 	    echo "Toggle port forward stopped with exit code $?.  Respawning.." >&2
 	    sleep 1
     done
@@ -150,8 +163,6 @@ start() {
     [ -z "${DSAAS_PREVIEW_TOKEN}" ] && printHelp && exit 1
     [ -z "${JC_OPENSHIFT_API_TOKEN}" ] && printHelp && exit 1
     [ -z "${JC_AUTH_TOKEN}" ] && printHelp && exit 1
-
-    oc login https://api.rh-idev.openshift.com --token=${DSAAS_PREVIEW_TOKEN} > /dev/null
 
     forwardProxyService &
     forwardTenantService &
